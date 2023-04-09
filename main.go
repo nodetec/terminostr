@@ -7,19 +7,36 @@ import (
 	"strconv"
 	"strings"
 
-	// "github.com/charmbracelet/glamour"
 	"github.com/charmbracelet/bubbles/help"
 	"github.com/charmbracelet/bubbles/key"
 	"github.com/charmbracelet/bubbles/spinner"
+	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/glamour"
 	lg "github.com/charmbracelet/lipgloss"
 	"github.com/nbd-wtf/go-nostr"
 	"github.com/nbd-wtf/go-nostr/nip19"
 )
 
 const relayUrl string = "wss://relay.damus.io"
-const npub string = "npub1qd3hhtge6vhwapp85q8eg03gea7ftuf9um4r8x4lh4xfy2trgvksf6dkva"
+const useHighPerformanceRenderer = false
+
+// const npub string = "npub1qd3hhtge6vhwapp85q8eg03gea7ftuf9um4r8x4lh4xfy2trgvksf6dkva"
 const limit int = 5
+
+var (
+	titleStyle = func() lg.Style {
+		b := lg.RoundedBorder()
+		b.Right = "├"
+		return lg.NewStyle().BorderStyle(b).Padding(0, 1)
+	}()
+
+	infoStyle = func() lg.Style {
+		b := lg.RoundedBorder()
+		b.Left = "┤"
+		return titleStyle.Copy().BorderStyle(b)
+	}()
+)
 
 type Styles struct {
 	AccentColor lg.Color
@@ -31,61 +48,50 @@ type Styles struct {
 	Descrption  lg.Style
 	Tag         lg.Style
 	ActiveBox   lg.Style
-	BoxWidth    int
+	MaxWidth    int
 }
 
 type keyMap struct {
-	Up   key.Binding
-	Down key.Binding
-	Help key.Binding
-	Quit key.Binding
+	Up    key.Binding
+	Down  key.Binding
+	Enter key.Binding
+	Help  key.Binding
+	Quit  key.Binding
 }
 
 type model struct {
-	cursor    int
-	relay     string
-	events    []*nostr.Event
-	filter    []*nostr.Filter
-	spinner   spinner.Model
-	help      help.Model
-	keys      keyMap
-	loading   bool
-	limit     int
-	err       error
-	width     int
-	height    int
-	styles    *Styles
-	separator string
+	cursor        int
+	view          bool
+	viewportReady bool
+	viewport      viewport.Model
+	events        []*nostr.Event
+	spinner       spinner.Model
+	help          help.Model
+	keys          keyMap
+	loading       bool
+	limit         int
+	err           error
+	width         int
+	height        int
+	styles        *Styles
+	separator     string
 }
 
 type errMsg struct{ err error }
 type eventsMsg []*nostr.Event
-
-func (k keyMap) ShortHelp() []key.Binding {
-	return []key.Binding{k.Help}
-}
-
-func (k keyMap) FullHelp() [][]key.Binding {
-	return [][]key.Binding{
-		{k.Help},
-		{k.Up},
-		{k.Down},
-		{k.Quit},
-	}
-}
 
 func DefaultStyles() *Styles {
 	s := new(Styles)
 	black := lg.Color("0")
 	gray := lg.Color("8")
 	s.AccentColor = lg.Color("12")
-	s.BoxWidth = 90
+	s.MaxWidth = 90
 
 	boxStyle := lg.NewStyle().
 		BorderStyle(lg.RoundedBorder()).
 		Margin(2).
-		Width(s.BoxWidth).
-		MaxWidth(s.BoxWidth + 2)
+		Width(s.MaxWidth).
+		MaxWidth(s.MaxWidth + 2)
 
 	s.Box = lg.NewStyle().
 		BorderForeground(black).
@@ -102,11 +108,11 @@ func DefaultStyles() *Styles {
 	s.Info = lg.NewStyle().MarginTop(1).Foreground(gray)
 
 	s.Number = lg.NewStyle().
-    MarginRight(2).
-    Padding(0, 1, 0, 1).
-    Background(s.AccentColor).
-    Foreground(black).
-    Bold(true)
+		MarginRight(2).
+		Padding(0, 1, 0, 1).
+		Background(s.AccentColor).
+		Foreground(black).
+		Bold(true)
 
 	s.Separator = lg.NewStyle().Foreground(gray).Margin(0, 1, 0, 1)
 
@@ -121,6 +127,20 @@ func DefaultStyles() *Styles {
 	return s
 }
 
+func (k keyMap) ShortHelp() []key.Binding {
+	return []key.Binding{k.Help}
+}
+
+func (k keyMap) FullHelp() [][]key.Binding {
+	return [][]key.Binding{
+		{k.Help},
+		{k.Enter},
+		{k.Up},
+		{k.Down},
+		{k.Quit},
+	}
+}
+
 var keys = keyMap{
 	Up: key.NewBinding(
 		key.WithKeys(tea.KeyUp.String(), "k"),
@@ -129,6 +149,10 @@ var keys = keyMap{
 	Down: key.NewBinding(
 		key.WithKeys(tea.KeyDown.String(), "j"),
 		key.WithHelp("↓/j", "Down"),
+	),
+	Enter: key.NewBinding(
+		key.WithKeys(tea.KeyEnter.String()),
+		key.WithHelp("󰌑/enter", "Open"),
 	),
 	Help: key.NewBinding(
 		key.WithKeys("?"),
@@ -148,7 +172,6 @@ func initialModel() *model {
 	s.Style = lg.NewStyle().Foreground(styles.AccentColor)
 
 	return &model{
-		relay:     relayUrl,
 		spinner:   s,
 		limit:     limit,
 		styles:    styles,
@@ -213,12 +236,32 @@ func (m model) Init() tea.Cmd {
 }
 
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
-	var cmd tea.Cmd
+	var (
+		cmd  tea.Cmd
+		cmds []tea.Cmd
+	)
 	switch msg := msg.(type) {
 
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
+
+		headerHeight := lg.Height(m.headerView()) + 1
+		footerHeight := lg.Height(m.footerView())
+		verticalMarginHeight := headerHeight + footerHeight
+		if !m.viewportReady {
+			m.viewport = viewport.New(m.styles.MaxWidth, msg.Height-verticalMarginHeight)
+			m.viewport.YPosition = headerHeight
+			m.viewport.HighPerformanceRendering = useHighPerformanceRenderer
+			m.viewportReady = true
+		} else {
+			m.viewport.Width = m.styles.MaxWidth
+			m.viewport.Height = msg.Height - verticalMarginHeight
+		}
+
+		if useHighPerformanceRenderer {
+			cmds = append(cmds, viewport.Sync(m.viewport))
+		}
 
 	case eventsMsg:
 		m.events = msg
@@ -234,15 +277,31 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.help.ShowAll = !m.help.ShowAll
 
 		case key.Matches(msg, m.keys.Quit):
-			return m, tea.Quit
+			if m.view {
+				m.view = false
+			} else {
+				return m, tea.Quit
+			}
 
 		case key.Matches(msg, m.keys.Up):
-			if m.cursor > 0 {
-				m.cursor--
+			if !m.view {
+				if m.cursor > 0 {
+					m.cursor--
+				}
 			}
+
 		case key.Matches(msg, m.keys.Down):
-			if m.cursor < len(m.events)-1 {
-				m.cursor++
+			if !m.view {
+				if m.cursor < len(m.events)-1 {
+					m.cursor++
+				}
+			}
+
+		case key.Matches(msg, m.keys.Enter):
+			m.view = true
+			if m.events != nil {
+				out, _ := glamour.Render(m.events[m.cursor].Content, "dark")
+				m.viewport.SetContent(out)
 			}
 		}
 
@@ -250,7 +309,10 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.spinner, cmd = m.spinner.Update(msg)
 		return m, cmd
 	}
-	return m, nil
+	m.viewport, cmd = m.viewport.Update(msg)
+	cmds = append(cmds, cmd)
+
+	return m, tea.Batch(cmds...)
 }
 
 func truncateString(str string, maxLen int) string {
@@ -264,6 +326,25 @@ func truncateString(str string, maxLen int) string {
 	return fmt.Sprintf("%s...%s", str[0:left], str[len(str)-right:])
 }
 
+func (m model) headerView() string {
+	title := titleStyle.Render("Mr. Pager")
+	line := strings.Repeat("─", max(0, m.viewport.Width-lg.Width(title)))
+	return lg.JoinHorizontal(lg.Center, title, line)
+}
+
+func (m model) footerView() string {
+	info := infoStyle.Render(fmt.Sprintf("%3.f%%", m.viewport.ScrollPercent()*100))
+	line := strings.Repeat("─", max(0, m.viewport.Width-lg.Width(info)))
+	return lg.JoinHorizontal(lg.Center, line, info)
+}
+
+func max(a, b int) int {
+	if a > b {
+		return a
+	}
+	return b
+}
+
 func (m model) View() string {
 	if m.loading {
 		spinner := m.spinner.View()
@@ -272,76 +353,83 @@ func (m model) View() string {
 	}
 
 	s := ""
-	for index, event := range m.events {
-		title := event.Tags.GetFirst([]string{"title"}).Value()
-    if len(title) >= m.styles.BoxWidth-14 {
-      title = title[:m.styles.BoxWidth-14] + "..."
-    }
-		title = m.styles.Title.Render(title)
-
-    number := m.styles.Number.Render(strconv.Itoa(index + 1) + ".")
-		title = lg.JoinHorizontal(lg.Center, number, title)
-
-		info := ""
-		separator := m.styles.Separator.Render(m.separator)
-
-		author := ""
-		if v, err := nip19.EncodePublicKey(event.PubKey); err == nil {
-			author = truncateString(v, 13)
+	if m.view {
+		if !m.viewportReady {
+			s = "Initializing..."
 		}
+		s = fmt.Sprintf("%s\n%s\n%s", m.headerView(), m.viewport.View(), m.footerView())
+	} else {
+		for index, event := range m.events {
+			title := event.Tags.GetFirst([]string{"title"}).Value()
+			if len(title) >= m.styles.MaxWidth-14 {
+				title = title[:m.styles.MaxWidth-14] + "..."
+			}
+			title = m.styles.Title.Render(title)
 
-		author = m.styles.Info.Render(author)
-		info = lg.JoinHorizontal(lg.Center, info, author)
+			number := m.styles.Number.Render(strconv.Itoa(index+1) + ".")
+			title = lg.JoinHorizontal(lg.Center, number, title)
 
-		publishedAt := event.Tags.GetFirst([]string{"published_at"}).Value()
-		publishedAt = getRelativeTime(publishedAt)
-		publishedAt = m.styles.Info.Render(publishedAt)
-		info = lg.JoinHorizontal(lg.Center, info, separator, publishedAt)
+			info := ""
+			separator := m.styles.Separator.Render(m.separator)
 
-		client := event.Tags.GetFirst([]string{"client"})
-		if client != nil {
-			c := client.Value()
-			c = m.styles.Info.Render(c)
-			info = lg.JoinHorizontal(lg.Center, info, separator, c)
-		}
-
-		descrpition := ""
-
-		summary := event.Tags.GetFirst([]string{"summary"})
-		if summary != nil {
-			descrpition = summary.Value()
-		} else {
-			descrpition = event.Content
-		}
-
-		firstLine := strings.Split(descrpition, "\n")[0]
-		if len(firstLine) > m.styles.BoxWidth-4 {
-			firstLine = firstLine[:m.styles.BoxWidth-8] + "..."
-		}
-		descrpition = m.styles.Descrption.Render(firstLine)
-
-		etags := event.Tags.GetAll([]string{"t"})
-		etags.FilterOut([]string{"title"})
-
-		tags := ""
-		for _, tag := range etags {
-			if tag.Key() == "title" {
-				continue
+			author := ""
+			if v, err := nip19.EncodePublicKey(event.PubKey); err == nil {
+				author = truncateString(v, 13)
 			}
 
-			t := m.styles.Tag.Render(tag.Value())
-			tags = lg.JoinHorizontal(lg.Right, tags, t)
+			author = m.styles.Info.Render(author)
+			info = lg.JoinHorizontal(lg.Center, info, author)
+
+			publishedAt := event.Tags.GetFirst([]string{"published_at"}).Value()
+			publishedAt = getRelativeTime(publishedAt)
+			publishedAt = m.styles.Info.Render(publishedAt)
+			info = lg.JoinHorizontal(lg.Center, info, separator, publishedAt)
+
+			client := event.Tags.GetFirst([]string{"client"})
+			if client != nil {
+				c := client.Value()
+				c = m.styles.Info.Render(c)
+				info = lg.JoinHorizontal(lg.Center, info, separator, c)
+			}
+
+			descrpition := ""
+
+			summary := event.Tags.GetFirst([]string{"summary"})
+			if summary != nil {
+				descrpition = summary.Value()
+			} else {
+				descrpition = event.Content
+			}
+
+			firstLine := strings.Split(descrpition, "\n")[0]
+			if len(firstLine) > m.styles.MaxWidth-4 {
+				firstLine = firstLine[:m.styles.MaxWidth-8] + "..."
+			}
+			descrpition = m.styles.Descrption.Render(firstLine)
+
+			etags := event.Tags.GetAll([]string{"t"})
+			etags.FilterOut([]string{"title"})
+
+			tags := ""
+			for _, tag := range etags {
+				if tag.Key() == "title" {
+					continue
+				}
+
+				t := m.styles.Tag.Render(tag.Value())
+				tags = lg.JoinHorizontal(lg.Right, tags, t)
+			}
+
+			box := lg.JoinVertical(lg.Left, title, info, descrpition, tags)
+
+			if index == m.cursor {
+				box = m.styles.ActiveBox.Render(box)
+			} else {
+				box = m.styles.Box.Render(box)
+			}
+
+			s = lg.JoinVertical(lg.Left, s, box)
 		}
-
-		box := lg.JoinVertical(lg.Left, title, info, descrpition, tags)
-
-		if index == m.cursor {
-			box = m.styles.ActiveBox.Render(box)
-		} else {
-			box = m.styles.Box.Render(box)
-		}
-
-		s = lg.JoinVertical(lg.Left, s, box)
 	}
 
 	help := m.help.View(m.keys)
@@ -352,25 +440,13 @@ func (m model) View() string {
 	return s
 }
 
-// func main() {
-// 	var events = sub()
-// 	// out, _ := glamour.Render(events[1].Content, "dark")
-// 	// fmt.Print(out)
-// 	for _, event := range events {
-// 		out, _ := glamour.Render(event.Content, "dark")
-// 		title := event.Tags.GetFirst([]string{"title"})
-// 		fmt.Println(title.Value())
-// 		// fmt.Print(event.Content)
-// 	}
-// }
-
 func main() {
 	// f, ferr := tea.LogToFile("debug.log", "debug")
 	// if ferr != nil {
 	// 	fmt.Printf("Error: %v", ferr)
 	// }
 	// defer f.Close()
-	p := tea.NewProgram(initialModel(), tea.WithAltScreen())
+	p := tea.NewProgram(initialModel(), tea.WithAltScreen(), tea.WithMouseCellMotion())
 	_, err := p.Run()
 	if err != nil {
 		fmt.Printf("Error: %v", err)
