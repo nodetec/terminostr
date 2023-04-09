@@ -24,31 +24,19 @@ const useHighPerformanceRenderer = false
 // const npub string = "npub1qd3hhtge6vhwapp85q8eg03gea7ftuf9um4r8x4lh4xfy2trgvksf6dkva"
 const limit int = 5
 
-var (
-	titleStyle = func() lg.Style {
-		b := lg.RoundedBorder()
-		b.Right = "├"
-		return lg.NewStyle().BorderStyle(b).Padding(0, 1)
-	}()
-
-	infoStyle = func() lg.Style {
-		b := lg.RoundedBorder()
-		b.Left = "┤"
-		return titleStyle.Copy().BorderStyle(b)
-	}()
-)
-
 type Styles struct {
-	AccentColor lg.Color
-	Box         lg.Style
-	Title       lg.Style
-	Number      lg.Style
-	Info        lg.Style
-	Separator   lg.Style
-	Descrption  lg.Style
-	Tag         lg.Style
-	ActiveBox   lg.Style
-	MaxWidth    int
+	AccentColor   lg.Color
+	Box           lg.Style
+	Title         lg.Style
+	Number        lg.Style
+	Info          lg.Style
+	Separator     lg.Style
+	Descrption    lg.Style
+	Tag           lg.Style
+	ActiveBox     lg.Style
+	ViewportTitle lg.Style
+	ViewportInfo  lg.Style
+	MaxWidth      int
 }
 
 type keyMap struct {
@@ -123,6 +111,17 @@ func DefaultStyles() *Styles {
 		Bold(true).
 		Padding(0, 1).
 		Margin(1, 1, 0, 0)
+
+	vptitle := lg.RoundedBorder()
+	vptitle.Right = "├"
+	s.ViewportTitle = lg.NewStyle().
+		BorderStyle(vptitle).
+		Padding(0, 1).
+		BorderForeground(s.AccentColor)
+
+	vpinfo := lg.RoundedBorder()
+	vpinfo.Left = "┤"
+	s.ViewportInfo = s.ViewportTitle.Copy().BorderStyle(vpinfo)
 
 	return s
 }
@@ -327,14 +326,16 @@ func truncateString(str string, maxLen int) string {
 }
 
 func (m model) headerView() string {
-	title := titleStyle.Render("Mr. Pager")
+	title := m.styles.ViewportTitle.Render("Mr. Pager")
 	line := strings.Repeat("─", max(0, m.viewport.Width-lg.Width(title)))
+  line = lg.NewStyle().Foreground(m.styles.AccentColor).Render(line)
 	return lg.JoinHorizontal(lg.Center, title, line)
 }
 
 func (m model) footerView() string {
-	info := infoStyle.Render(fmt.Sprintf("%3.f%%", m.viewport.ScrollPercent()*100))
+	info := m.styles.ViewportInfo.Render(fmt.Sprintf("%3.f%%", m.viewport.ScrollPercent()*100))
 	line := strings.Repeat("─", max(0, m.viewport.Width-lg.Width(info)))
+  line = lg.NewStyle().Foreground(m.styles.AccentColor).Render(line)
 	return lg.JoinHorizontal(lg.Center, line, info)
 }
 
