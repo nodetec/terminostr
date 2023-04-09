@@ -315,7 +315,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func truncateString(str string, maxLen int) string {
-	if len(str) <= maxLen {
+	if lg.Width(str) <= maxLen {
 		return str
 	}
 
@@ -362,7 +362,7 @@ func (m model) View() string {
 	} else {
 		for index, event := range m.events {
 			title := event.Tags.GetFirst([]string{"title"}).Value()
-			if len(title) >= m.styles.MaxWidth-14 {
+			if lg.Width(title) >= m.styles.MaxWidth-14 {
 				title = title[:m.styles.MaxWidth-14] + "..."
 			}
 			title = m.styles.Title.Render(title)
@@ -403,7 +403,7 @@ func (m model) View() string {
 			}
 
 			firstLine := strings.Split(descrpition, "\n")[0]
-			if len(firstLine) > m.styles.MaxWidth-4 {
+			if lg.Width(firstLine) > m.styles.MaxWidth-4 {
 				firstLine = firstLine[:m.styles.MaxWidth-8] + "..."
 			}
 			descrpition = m.styles.Descrption.Render(firstLine)
