@@ -323,6 +323,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case key.Matches(msg, m.keys.Next):
       if !m.view {
 				if m.currentPage < calculateTotalPages(len(m.events), (m.mainViewHeight/boxViewHeight)) {
+					m.cursor += m.mainViewHeight/boxViewHeight
 					m.currentPage++
 				}
 			}
@@ -330,6 +331,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case key.Matches(msg, m.keys.Prev):
 			if !m.view {
 				if m.currentPage > 0 {
+					m.cursor -= m.mainViewHeight/boxViewHeight
 					m.currentPage--
 				}
 			}
