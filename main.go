@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"strconv"
 	"strings"
 
 	// "github.com/charmbracelet/glamour"
@@ -13,17 +14,18 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	lg "github.com/charmbracelet/lipgloss"
 	"github.com/nbd-wtf/go-nostr"
-	// "github.com/nbd-wtf/go-nostr/nip19"
+	"github.com/nbd-wtf/go-nostr/nip19"
 )
 
 const relayUrl string = "wss://relay.damus.io"
 const npub string = "npub1qd3hhtge6vhwapp85q8eg03gea7ftuf9um4r8x4lh4xfy2trgvksf6dkva"
-const limit int = 4
+const limit int = 5
 
 type Styles struct {
 	AccentColor lg.Color
 	Box         lg.Style
 	Title       lg.Style
+	Number      lg.Style
 	Info        lg.Style
 	Separator   lg.Style
 	Descrption  lg.Style
@@ -99,6 +101,13 @@ func DefaultStyles() *Styles {
 
 	s.Info = lg.NewStyle().MarginTop(1).Foreground(gray)
 
+	s.Number = lg.NewStyle().
+    MarginRight(2).
+    Padding(0, 1, 0, 1).
+    Background(s.AccentColor).
+    Foreground(black).
+    Bold(true)
+
 	s.Separator = lg.NewStyle().Foreground(gray).Margin(0, 1, 0, 1)
 
 	s.Descrption = lg.NewStyle().MarginTop(1)
@@ -146,7 +155,7 @@ func initialModel() *model {
 		keys:      keys,
 		loading:   true,
 		help:      help.New(),
-		separator: "·",
+		separator: "",
 	}
 }
 
@@ -244,23 +253,50 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
+func truncateString(str string, maxLen int) string {
+	if len(str) <= maxLen {
+		return str
+	}
+
+	left := (maxLen - 3) / 2
+	right := maxLen - 3 - left
+
+	return fmt.Sprintf("%s...%s", str[0:left], str[len(str)-right:])
+}
+
 func (m model) View() string {
 	if m.loading {
 		spinner := m.spinner.View()
-		s := fmt.Sprintf("%s Loading %s", spinner, spinner)
+		s := fmt.Sprintf("%s  Loading  %s", spinner, spinner)
 		return lg.Place(m.width, m.height, lg.Center, lg.Center, s)
 	}
 
 	s := ""
 	for index, event := range m.events {
 		title := event.Tags.GetFirst([]string{"title"}).Value()
+    if len(title) >= m.styles.BoxWidth-14 {
+      title = title[:m.styles.BoxWidth-14] + "..."
+    }
 		title = m.styles.Title.Render(title)
+
+    number := m.styles.Number.Render(strconv.Itoa(index + 1) + ".")
+		title = lg.JoinHorizontal(lg.Center, number, title)
+
+		info := ""
+		separator := m.styles.Separator.Render(m.separator)
+
+		author := ""
+		if v, err := nip19.EncodePublicKey(event.PubKey); err == nil {
+			author = truncateString(v, 13)
+		}
+
+		author = m.styles.Info.Render(author)
+		info = lg.JoinHorizontal(lg.Center, info, author)
 
 		publishedAt := event.Tags.GetFirst([]string{"published_at"}).Value()
 		publishedAt = getRelativeTime(publishedAt)
-		info := m.styles.Info.Render(publishedAt)
-
-		separator := m.styles.Separator.Render(m.separator)
+		publishedAt = m.styles.Info.Render(publishedAt)
+		info = lg.JoinHorizontal(lg.Center, info, separator, publishedAt)
 
 		client := event.Tags.GetFirst([]string{"client"})
 		if client != nil {
@@ -331,7 +367,7 @@ func (m model) View() string {
 func main() {
 	f, ferr := tea.LogToFile("debug.log", "debug")
 	if ferr != nil {
-		fmt.Printf("Error: %w", ferr)
+		fmt.Printf("Error: %v", ferr)
 	}
 	defer f.Close()
 	p := tea.NewProgram(initialModel(), tea.WithAltScreen())
