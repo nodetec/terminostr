@@ -365,11 +365,11 @@ func (m model) View() string {
 // }
 
 func main() {
-	f, ferr := tea.LogToFile("debug.log", "debug")
-	if ferr != nil {
-		fmt.Printf("Error: %v", ferr)
-	}
-	defer f.Close()
+	// f, ferr := tea.LogToFile("debug.log", "debug")
+	// if ferr != nil {
+	// 	fmt.Printf("Error: %v", ferr)
+	// }
+	// defer f.Close()
 	p := tea.NewProgram(initialModel(), tea.WithAltScreen())
 	_, err := p.Run()
 	if err != nil {
