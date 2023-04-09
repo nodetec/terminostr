@@ -250,11 +250,11 @@ func (m model) Init() tea.Cmd {
 }
 
 func calculateTotalPages(eventCount int, eventsPerPage int) int {
-    totalPages := eventCount / eventsPerPage
-    if eventCount % eventsPerPage != 0 {
-        totalPages++
-    }
-    return totalPages - 1
+	totalPages := eventCount / eventsPerPage
+	if eventCount%eventsPerPage != 0 {
+		totalPages++
+	}
+	return totalPages - 1
 }
 
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -308,22 +308,22 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		case key.Matches(msg, m.keys.Up):
 			if !m.view {
-				if m.cursor > 0 {
+				if m.cursor > m.currentPage * (m.mainViewHeight / boxViewHeight) {
 					m.cursor--
 				}
 			}
 
 		case key.Matches(msg, m.keys.Down):
 			if !m.view {
-				if m.cursor < len(m.events)-1 {
+				if m.cursor < m.currentPage * (m.mainViewHeight / boxViewHeight) + (m.mainViewHeight / boxViewHeight) -1 {
 					m.cursor++
 				}
 			}
 
 		case key.Matches(msg, m.keys.Next):
-      if !m.view {
+			if !m.view {
 				if m.currentPage < calculateTotalPages(len(m.events), (m.mainViewHeight/boxViewHeight)) {
-					m.cursor += m.mainViewHeight/boxViewHeight
+					m.cursor += m.mainViewHeight / boxViewHeight
 					m.currentPage++
 				}
 			}
@@ -331,7 +331,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case key.Matches(msg, m.keys.Prev):
 			if !m.view {
 				if m.currentPage > 0 {
-					m.cursor -= m.mainViewHeight/boxViewHeight
+					m.cursor -= m.mainViewHeight / boxViewHeight
 					m.currentPage--
 				}
 			}
@@ -416,8 +416,8 @@ func (m model) View() string {
 		s = fmt.Sprintf("%s\n%s\n%s", m.headerView(), m.viewport.View(), m.footerView())
 	} else {
 		for index, event := range paginateEvents(m.events, m.currentPage, m.mainViewHeight/boxViewHeight) {
-      pageOffset := m.currentPage * m.mainViewHeight/boxViewHeight
-      index = index + pageOffset
+			pageOffset := m.currentPage * m.mainViewHeight / boxViewHeight
+			index = index + pageOffset
 			title := event.Tags.GetFirst([]string{"title"}).Value()
 			if lg.Width(title) >= m.styles.MaxWidth-14 {
 				title = title[:m.styles.MaxWidth-14] + "..."
