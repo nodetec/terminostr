@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"fmt"
-	// "log"
 	"os"
 	"strconv"
 	"strings"
@@ -21,9 +20,10 @@ import (
 
 const relayUrl string = "wss://relay.damus.io"
 const useHighPerformanceRenderer = false
+const boxViewHeight = 11 // FIXME: bruh, why value is hardcoded
 
 // const npub string = "npub1qd3hhtge6vhwapp85q8eg03gea7ftuf9um4r8x4lh4xfy2trgvksf6dkva"
-const limit int = 5
+const limit int = 15
 
 type Styles struct {
 	AccentColor   lg.Color
@@ -43,27 +43,31 @@ type Styles struct {
 type keyMap struct {
 	Up    key.Binding
 	Down  key.Binding
+	Next  key.Binding
+	Prev  key.Binding
 	Enter key.Binding
 	Help  key.Binding
 	Quit  key.Binding
 }
 
 type model struct {
-	cursor        int
-	view          bool
-	viewportReady bool
-	viewport      viewport.Model
-	events        []*nostr.Event
-	spinner       spinner.Model
-	help          help.Model
-	keys          keyMap
-	loading       bool
-	limit         int
-	err           error
-	width         int
-	height        int
-	styles        *Styles
-	separator     string
+	cursor         int
+	view           bool
+	viewportReady  bool
+	viewport       viewport.Model
+	events         []*nostr.Event
+	spinner        spinner.Model
+	help           help.Model
+	keys           keyMap
+	loading        bool
+	limit          int
+	err            error
+	width          int
+	height         int
+	styles         *Styles
+	separator      string
+	mainViewHeight int
+	currentPage    int
 }
 
 type errMsg struct{ err error }
@@ -137,6 +141,8 @@ func (k keyMap) FullHelp() [][]key.Binding {
 		{k.Enter},
 		{k.Up},
 		{k.Down},
+		{k.Next},
+		{k.Prev},
 		{k.Quit},
 	}
 }
@@ -149,6 +155,14 @@ var keys = keyMap{
 	Down: key.NewBinding(
 		key.WithKeys(tea.KeyDown.String(), "j"),
 		key.WithHelp("↓/j", "Down"),
+	),
+	Next: key.NewBinding(
+		key.WithKeys(tea.KeyRight.String(), "l"),
+		key.WithHelp("↑/l", "Next"),
+	),
+	Prev: key.NewBinding(
+		key.WithKeys(tea.KeyLeft.String(), "h"),
+		key.WithHelp("↑/h", "Prev"),
 	),
 	Enter: key.NewBinding(
 		key.WithKeys(tea.KeyEnter.String()),
@@ -235,6 +249,14 @@ func (m model) Init() tea.Cmd {
 	return tea.Batch(m.spinner.Tick, sub)
 }
 
+func calculateTotalPages(eventCount int, eventsPerPage int) int {
+    totalPages := eventCount / eventsPerPage
+    if eventCount % eventsPerPage != 0 {
+        totalPages++
+    }
+    return totalPages - 1
+}
+
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	var (
 		cmd  tea.Cmd
@@ -245,6 +267,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
+		m.mainViewHeight = lg.Height(m.View())
 
 		headerHeight := lg.Height(m.headerView()) + 1
 		footerHeight := lg.Height(m.footerView())
@@ -294,6 +317,20 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if !m.view {
 				if m.cursor < len(m.events)-1 {
 					m.cursor++
+				}
+			}
+
+		case key.Matches(msg, m.keys.Next):
+      if !m.view {
+				if m.currentPage < calculateTotalPages(len(m.events), (m.mainViewHeight/boxViewHeight)) {
+					m.currentPage++
+				}
+			}
+
+		case key.Matches(msg, m.keys.Prev):
+			if !m.view {
+				if m.currentPage > 0 {
+					m.currentPage--
 				}
 			}
 
@@ -347,10 +384,25 @@ func max(a, b int) int {
 	return b
 }
 
+func paginateEvents(events []*nostr.Event, currentPage, eventsPerPage int) []*nostr.Event {
+	start := currentPage * eventsPerPage
+	end := start + eventsPerPage
+
+	if start > len(events) {
+		return []*nostr.Event{}
+	}
+
+	if end > len(events) {
+		end = len(events)
+	}
+
+	return events[start:end]
+}
+
 func (m model) View() string {
 	if m.loading {
 		spinner := m.spinner.View()
-		s := fmt.Sprintf("%s  Loading  %s", spinner, spinner)
+		s := fmt.Sprintf("fetching from %s  %s", relayUrl, spinner)
 		return lg.Place(m.width, m.height, lg.Center, lg.Center, s)
 	}
 
@@ -361,7 +413,9 @@ func (m model) View() string {
 		}
 		s = fmt.Sprintf("%s\n%s\n%s", m.headerView(), m.viewport.View(), m.footerView())
 	} else {
-		for index, event := range m.events {
+		for index, event := range paginateEvents(m.events, m.currentPage, m.mainViewHeight/boxViewHeight) {
+      pageOffset := m.currentPage * m.mainViewHeight/boxViewHeight
+      index = index + pageOffset
 			title := event.Tags.GetFirst([]string{"title"}).Value()
 			if lg.Width(title) >= m.styles.MaxWidth-14 {
 				title = title[:m.styles.MaxWidth-14] + "..."
@@ -384,7 +438,7 @@ func (m model) View() string {
 
 			publishedAt := event.Tags.GetFirst([]string{"published_at"})
 			if publishedAt != nil {
-        p := getRelativeTime(publishedAt.Value())
+				p := getRelativeTime(publishedAt.Value())
 				p = m.styles.Info.Render(p)
 				info = lg.JoinHorizontal(lg.Center, info, separator, p)
 			}
@@ -440,8 +494,6 @@ func (m model) View() string {
 
 	s = lg.JoinVertical(lg.Center, s, help)
 	s = lg.Place(m.width, m.height, lg.Center, lg.Top, s)
-
-	// log.Printf("%d", lg.Height(s))
 
 	return s
 }
