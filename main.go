@@ -267,7 +267,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
-		m.mainViewHeight = lg.Height(m.View())
+		m.mainViewHeight = msg.Height - 2 // FIXME: bruh, why value is hardcoded
 
 		headerHeight := lg.Height(m.headerView()) + 1
 		footerHeight := lg.Height(m.footerView())
