@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	// "log"
 	"os"
 	"strconv"
 	"strings"
@@ -328,14 +329,14 @@ func truncateString(str string, maxLen int) string {
 func (m model) headerView() string {
 	title := m.styles.ViewportTitle.Render("Mr. Pager")
 	line := strings.Repeat("─", max(0, m.viewport.Width-lg.Width(title)))
-  line = lg.NewStyle().Foreground(m.styles.AccentColor).Render(line)
+	line = lg.NewStyle().Foreground(m.styles.AccentColor).Render(line)
 	return lg.JoinHorizontal(lg.Center, title, line)
 }
 
 func (m model) footerView() string {
 	info := m.styles.ViewportInfo.Render(fmt.Sprintf("%3.f%%", m.viewport.ScrollPercent()*100))
 	line := strings.Repeat("─", max(0, m.viewport.Width-lg.Width(info)))
-  line = lg.NewStyle().Foreground(m.styles.AccentColor).Render(line)
+	line = lg.NewStyle().Foreground(m.styles.AccentColor).Render(line)
 	return lg.JoinHorizontal(lg.Center, line, info)
 }
 
@@ -381,10 +382,12 @@ func (m model) View() string {
 			author = m.styles.Info.Render(author)
 			info = lg.JoinHorizontal(lg.Center, info, author)
 
-			publishedAt := event.Tags.GetFirst([]string{"published_at"}).Value()
-			publishedAt = getRelativeTime(publishedAt)
-			publishedAt = m.styles.Info.Render(publishedAt)
-			info = lg.JoinHorizontal(lg.Center, info, separator, publishedAt)
+			publishedAt := event.Tags.GetFirst([]string{"published_at"})
+			if publishedAt != nil {
+        p := getRelativeTime(publishedAt.Value())
+				p = m.styles.Info.Render(p)
+				info = lg.JoinHorizontal(lg.Center, info, separator, p)
+			}
 
 			client := event.Tags.GetFirst([]string{"client"})
 			if client != nil {
@@ -438,15 +441,17 @@ func (m model) View() string {
 	s = lg.JoinVertical(lg.Center, s, help)
 	s = lg.Place(m.width, m.height, lg.Center, lg.Top, s)
 
+	// log.Printf("%d", lg.Height(s))
+
 	return s
 }
 
 func main() {
-	// f, ferr := tea.LogToFile("debug.log", "debug")
-	// if ferr != nil {
-	// 	fmt.Printf("Error: %v", ferr)
-	// }
-	// defer f.Close()
+	f, ferr := tea.LogToFile("debug.log", "debug")
+	if ferr != nil {
+		fmt.Printf("Error: %v", ferr)
+	}
+	defer f.Close()
 	p := tea.NewProgram(initialModel(), tea.WithAltScreen(), tea.WithMouseCellMotion())
 	_, err := p.Run()
 	if err != nil {
