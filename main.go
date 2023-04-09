@@ -22,8 +22,7 @@ const relayUrl string = "wss://relay.damus.io"
 const useHighPerformanceRenderer = false
 const boxViewHeight = 11 // FIXME: bruh, why value is hardcoded
 
-// const npub string = "npub1qd3hhtge6vhwapp85q8eg03gea7ftuf9um4r8x4lh4xfy2trgvksf6dkva"
-const limit int = 15
+const limit int = 0
 
 type Styles struct {
 	AccentColor   lg.Color
@@ -203,21 +202,24 @@ func sub() tea.Msg {
 	}
 
 	var filters nostr.Filters
-	filters = []nostr.Filter{{
-		Kinds: []int{30023},
-		Limit: limit,
-	}}
-	// if _, v, err := nip19.Decode(npub); err == nil {
-	// 	pub := v.(string)
-	// 	filters = []nostr.Filter{{
-	// 		Kinds:   []int{1},
-	// 		Authors: []string{pub},
-	// 		Limit:   1,
-	// 	}}
-	// } else {
-	// 	panic(err)
-	// }
-	//
+
+	// filters = []nostr.Filter{{
+	// 	Kinds: []int{30023},
+	// 	Limit: limit,
+	// }}
+
+  npub := "npub1ygzj9skr9val9yqxkf67yf9jshtyhvvl0x76jp5er09nsc0p3j6qr260k2"
+	if _, v, err := nip19.Decode(npub); err == nil {
+		pub := v.(string)
+		filters = []nostr.Filter{{
+			Kinds:   []int{30023},
+			Authors: []string{pub},
+			Limit:   limit,
+		}}
+	} else {
+		panic(err)
+	}
+
 	ctx, cancel := context.WithCancel(context.Background())
 	sub, err := relay.Subscribe(ctx, filters)
 
