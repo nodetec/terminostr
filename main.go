@@ -158,11 +158,11 @@ var keys = keyMap{
 	),
 	Next: key.NewBinding(
 		key.WithKeys(tea.KeyRight.String(), "l"),
-		key.WithHelp("↑/l", "Next"),
+		key.WithHelp("→/l", "Next"),
 	),
 	Prev: key.NewBinding(
 		key.WithKeys(tea.KeyLeft.String(), "h"),
-		key.WithHelp("↑/h", "Prev"),
+		key.WithHelp("←/h", "Prev"),
 	),
 	Enter: key.NewBinding(
 		key.WithKeys(tea.KeyEnter.String()),
