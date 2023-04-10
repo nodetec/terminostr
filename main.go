@@ -308,14 +308,14 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		case key.Matches(msg, m.keys.Up):
 			if !m.view {
-				if m.cursor > m.currentPage * (m.mainViewHeight / boxViewHeight) {
+				if m.cursor > m.currentPage*(m.mainViewHeight/boxViewHeight) {
 					m.cursor--
 				}
 			}
 
 		case key.Matches(msg, m.keys.Down):
 			if !m.view {
-				if m.cursor < m.currentPage * (m.mainViewHeight / boxViewHeight) + (m.mainViewHeight / boxViewHeight) -1 {
+				if m.cursor < m.currentPage*(m.mainViewHeight/boxViewHeight)+(m.mainViewHeight/boxViewHeight)-1 {
 					m.cursor++
 				}
 			}
@@ -418,11 +418,16 @@ func (m model) View() string {
 		for index, event := range paginateEvents(m.events, m.currentPage, m.mainViewHeight/boxViewHeight) {
 			pageOffset := m.currentPage * m.mainViewHeight / boxViewHeight
 			index = index + pageOffset
-			title := event.Tags.GetFirst([]string{"title"}).Value()
-			if lg.Width(title) >= m.styles.MaxWidth-14 {
-				title = title[:m.styles.MaxWidth-14] + "..."
+
+			title := ""
+			t := event.Tags.GetFirst([]string{"title"})
+			if t != nil {
+				title = t.Value()
+				if lg.Width(title) >= m.styles.MaxWidth-14 {
+					title = title[:m.styles.MaxWidth-14] + "..."
+				}
+				title = m.styles.Title.Render(title)
 			}
-			title = m.styles.Title.Render(title)
 
 			number := m.styles.Number.Render(strconv.Itoa(index+1) + ".")
 			title = lg.JoinHorizontal(lg.Center, number, title)
