@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"fmt"
-	"log"
 	"os"
 	"strconv"
 	"strings"
@@ -21,7 +20,7 @@ import (
 
 const relayUrl string = "wss://relay.damus.io"
 const useHighPerformanceRenderer = false
-const boxViewHeight = 11 // FIXME: bruh, why value is hardcoded
+const boxViewHeight = 15 // FIXME: bruh, why value is hardcoded
 
 // const npub string = "npub1qd3hhtge6vhwapp85q8eg03gea7ftuf9um4r8x4lh4xfy2trgvksf6dkva"
 const limit int = 7
@@ -258,19 +257,10 @@ func calculateTotalPages(eventCount int, eventsPerPage int) int {
 	return totalPages - 1
 }
 
-func (m model) UpdateCursor (tea.Cmd) {
-  eventsPerPage := m.mainViewHeight / boxViewHeight
-  if m.cursor > eventsPerPage {
-    m.cursor = eventsPerPage - 1
-  }
-}
-
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	var (
-		cmd           tea.Cmd
-		cmds          []tea.Cmd
-		eventsPerPage = m.mainViewHeight / boxViewHeight
-    lastPage = calculateTotalPages(len(m.events), eventsPerPage)
+		cmd  tea.Cmd
+		cmds []tea.Cmd
 	)
 	switch msg := msg.(type) {
 
@@ -318,23 +308,29 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		case key.Matches(msg, m.keys.Up):
 			if !m.view {
-				if m.cursor > m.currentPage*(eventsPerPage) {
+				if m.cursor > 0 {
 					m.cursor--
 				}
 			}
 
 		case key.Matches(msg, m.keys.Down):
-      log.Printf("cursor %d", m.cursor)
 			if !m.view {
-				if m.cursor < eventsPerPage - 1 {
-					m.cursor++
+				if m.cursor < m.mainViewHeight/boxViewHeight-1 {
+					if m.currentPage == calculateTotalPages(len(m.events), m.mainViewHeight/boxViewHeight) {
+						if m.cursor > len(m.events)%m.mainViewHeight/boxViewHeight-1 {
+							m.cursor = len(m.events)%(m.mainViewHeight/boxViewHeight) - 1
+						}
+					} else {
+						m.cursor++
+					}
 				}
 			}
 
 		case key.Matches(msg, m.keys.Next):
 			if !m.view {
-				if m.currentPage < lastPage {
+				if m.currentPage < calculateTotalPages(len(m.events), m.mainViewHeight/boxViewHeight) {
 					m.currentPage++
+					m.cursor = 0
 				}
 			}
 
@@ -342,6 +338,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if !m.view {
 				if m.currentPage > 0 {
 					m.currentPage--
+					m.cursor = 0
 				}
 			}
 
@@ -426,7 +423,7 @@ func (m model) View() string {
 	} else {
 		for index, event := range paginateEvents(m.events, m.currentPage, m.mainViewHeight/boxViewHeight) {
 			pageOffset := m.currentPage * m.mainViewHeight / boxViewHeight
-      eventOnPageIndex := index + pageOffset
+			eventOnPageIndex := index + pageOffset
 
 			title := ""
 			t := event.Tags.GetFirst([]string{"title"})
