@@ -20,10 +20,10 @@ import (
 
 const relayUrl string = "wss://relay.damus.io"
 const useHighPerformanceRenderer = false
-const boxViewHeight = 15 // FIXME: bruh, why value is hardcoded
+const boxViewHeight = 11 // FIXME: bruh, why value is hardcoded
 
 // const npub string = "npub1qd3hhtge6vhwapp85q8eg03gea7ftuf9um4r8x4lh4xfy2trgvksf6dkva"
-const limit int = 7
+const limit int = 15
 
 type Styles struct {
 	AccentColor   lg.Color
@@ -316,13 +316,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case key.Matches(msg, m.keys.Down):
 			if !m.view {
 				if m.cursor < m.mainViewHeight/boxViewHeight-1 {
-					if m.currentPage == calculateTotalPages(len(m.events), m.mainViewHeight/boxViewHeight) {
-						if m.cursor > len(m.events)%m.mainViewHeight/boxViewHeight-1 {
-							m.cursor = len(m.events)%(m.mainViewHeight/boxViewHeight) - 1
-						}
-					} else {
-						m.cursor++
-					}
+					m.cursor++
 				}
 			}
 
@@ -330,7 +324,6 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if !m.view {
 				if m.currentPage < calculateTotalPages(len(m.events), m.mainViewHeight/boxViewHeight) {
 					m.currentPage++
-					m.cursor = 0
 				}
 			}
 
@@ -338,7 +331,6 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if !m.view {
 				if m.currentPage > 0 {
 					m.currentPage--
-					m.cursor = 0
 				}
 			}
 
