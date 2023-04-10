@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"log"
 	"os"
 	"strconv"
 	"strings"
@@ -23,7 +24,7 @@ const useHighPerformanceRenderer = false
 const boxViewHeight = 11 // FIXME: bruh, why value is hardcoded
 
 // const npub string = "npub1qd3hhtge6vhwapp85q8eg03gea7ftuf9um4r8x4lh4xfy2trgvksf6dkva"
-const limit int = 15
+const limit int = 7
 
 type Styles struct {
 	AccentColor   lg.Color
@@ -257,10 +258,19 @@ func calculateTotalPages(eventCount int, eventsPerPage int) int {
 	return totalPages - 1
 }
 
+func (m model) UpdateCursor (tea.Cmd) {
+  eventsPerPage := m.mainViewHeight / boxViewHeight
+  if m.cursor > eventsPerPage {
+    m.cursor = eventsPerPage - 1
+  }
+}
+
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	var (
-		cmd  tea.Cmd
-		cmds []tea.Cmd
+		cmd           tea.Cmd
+		cmds          []tea.Cmd
+		eventsPerPage = m.mainViewHeight / boxViewHeight
+    lastPage = calculateTotalPages(len(m.events), eventsPerPage)
 	)
 	switch msg := msg.(type) {
 
@@ -308,22 +318,22 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		case key.Matches(msg, m.keys.Up):
 			if !m.view {
-				if m.cursor > m.currentPage*(m.mainViewHeight/boxViewHeight) {
+				if m.cursor > m.currentPage*(eventsPerPage) {
 					m.cursor--
 				}
 			}
 
 		case key.Matches(msg, m.keys.Down):
+      log.Printf("cursor %d", m.cursor)
 			if !m.view {
-				if m.cursor < m.currentPage*(m.mainViewHeight/boxViewHeight)+(m.mainViewHeight/boxViewHeight)-1 {
+				if m.cursor < eventsPerPage - 1 {
 					m.cursor++
 				}
 			}
 
 		case key.Matches(msg, m.keys.Next):
 			if !m.view {
-				if m.currentPage < calculateTotalPages(len(m.events), (m.mainViewHeight/boxViewHeight)) {
-					m.cursor += m.mainViewHeight / boxViewHeight
+				if m.currentPage < lastPage {
 					m.currentPage++
 				}
 			}
@@ -331,7 +341,6 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case key.Matches(msg, m.keys.Prev):
 			if !m.view {
 				if m.currentPage > 0 {
-					m.cursor -= m.mainViewHeight / boxViewHeight
 					m.currentPage--
 				}
 			}
@@ -417,7 +426,7 @@ func (m model) View() string {
 	} else {
 		for index, event := range paginateEvents(m.events, m.currentPage, m.mainViewHeight/boxViewHeight) {
 			pageOffset := m.currentPage * m.mainViewHeight / boxViewHeight
-			index = index + pageOffset
+      eventOnPageIndex := index + pageOffset
 
 			title := ""
 			t := event.Tags.GetFirst([]string{"title"})
@@ -429,7 +438,7 @@ func (m model) View() string {
 				title = m.styles.Title.Render(title)
 			}
 
-			number := m.styles.Number.Render(strconv.Itoa(index+1) + ".")
+			number := m.styles.Number.Render(strconv.Itoa(eventOnPageIndex+1) + ".")
 			title = lg.JoinHorizontal(lg.Center, number, title)
 
 			info := ""
@@ -506,11 +515,11 @@ func (m model) View() string {
 }
 
 func main() {
-	f, ferr := tea.LogToFile("debug.log", "debug")
-	if ferr != nil {
-		fmt.Printf("Error: %v", ferr)
-	}
-	defer f.Close()
+	// f, ferr := tea.LogToFile("debug.log", "debug")
+	// if ferr != nil {
+	// 	fmt.Printf("Error: %v", ferr)
+	// }
+	// defer f.Close()
 	p := tea.NewProgram(initialModel(), tea.WithAltScreen(), tea.WithMouseCellMotion())
 	_, err := p.Run()
 	if err != nil {
